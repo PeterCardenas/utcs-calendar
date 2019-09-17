@@ -22,5 +22,13 @@ Calendar. Google Calendar API implementation in progress.
 
 
 ## Run
-`python3 utcs-calendar/utcs_calendar.py`
 
+`cd utcs-calendar`
+
+`python3 utcs_calendar.py`
+
+### First Time Run
+
+- Sign into Google account
+- When "This app isn't verified" pops up, click "Advanced", then click "Go to UTCS Calendar Converter (unsafe)"
+- Click "Allow" 3 times

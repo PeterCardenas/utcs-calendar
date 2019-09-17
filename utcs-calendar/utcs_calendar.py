@@ -4,12 +4,19 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
+import requests
+from bs4 import BeautifulSoup
 import datetime
 import pickle
 import os.path
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
+import re
+from datetime import date
+from datetime import datetime
+import pytz
+import sys
 
 SCOPES = ['https://www.googleapis.com/auth/calendar.readonly', 'https://www.googleapis.com/auth/calendar']
 
@@ -69,6 +76,8 @@ def get_address():
         location = "The Varsity Pizza & Pints"
     elif "Palmer" in location_name:
         location = "Palmer Events Center"
+    elif "ECJ" in location_name:
+        location = "Ernest Cockrell Jr, Hall"
 
     if len(location) == 0:
         print("No address stored for location name:", location_name)
@@ -92,9 +101,9 @@ def get_time():
         all_day = "True"
 
     ret = {
-        start_time: start_time,
-        end_time: end_time,
-        all_day: all_day
+        'start_time': start_time,
+        'end_time': end_time,
+        'all_day': all_day
     }
     return ret
 
@@ -119,7 +128,7 @@ def get_description(contact_name, contact_email, url):
     if len(description_parts) > 0:
         description = combine_description(description_parts)
 
-    description = "\"{0}{1}URL: {2}\n\n{3}\"".format(
+    description = "{0}{1}URL: {2}\n\n{3}".format(
         "Contact Name: " + contact_name + "\n\n" if len(contact_name) > 0 else contact_name,
         "Contact Email: " + contact_email + "\n\n" if len(contact_email) > 0 else contact_email,
         url,
@@ -129,11 +138,63 @@ def get_description(contact_name, contact_email, url):
     return description
 
 
+def create_event(summary, time, raw_date, description, location):
+    event = dict()
+    event['summary'] = summary
+    event['description'] = description
+    event['location'] = location
+    date_components = raw_date.split("/")
+    date_year = int(date_components[2])
+    date_month = int(date_components[0])
+    date_day = int(date_components[1])
+    event["start"] = dict()
+    event["end"] = dict()
+    if time.get("all_day") == "True":
+        event["start"]["date"] = date(date_year, date_month, date_day).isoformat()
+        event["end"]["date"] = date(date_year, date_month, date_day).isoformat()
+    else:
+        cst = pytz.timezone("America/Chicago")
+        start_time_components = re.split("[ :]", time.get('start_time'))
+        start_time_hour = int(start_time_components[0])
+        start_time_minute = int(start_time_components[1])
+        if start_time_components[2] == "PM" and start_time_hour != 12:
+            start_time_hour += 12
+        end_time_components = re.split("[ :]", time.get('end_time'))
+        end_time_hour = int(end_time_components[0])
+        end_time_minute = int(end_time_components[1])
+        if end_time_components[2] == "PM" and end_time_hour != 12:
+            end_time_hour += 12
+        event["start"]["dateTime"] = datetime(date_year, date_month, date_day,
+                                              start_time_hour, start_time_minute, 0, 0, cst).isoformat()
+        event["end"]["dateTime"] = datetime(date_year, date_month, date_day,
+                                            end_time_hour, end_time_minute, 0, 0, cst).isoformat()
+
+    return event
+
+
 def write_csv():
     csv = open("events.csv", "w+")
+    csv.write("Subject,Start Date,Start Time,End Date,End Time,All Day Event,Description,Location,Private\n")
+    # description = "\"" + description + "\""
+    # location = "\"" + location + "\""
+    # subject = "\"" + subject + "\""
+    # csv.write(subject + "," +
+    #     raw_date + "," +
+    #     time.get("start_time") + "," +
+    #     raw_date + "," +
+    #     time.get("end_time") + "," +
+    #     time.get("all_day") + "," +
+    #     description + "," +
+    #     location + "," +
+    #     "False" +
+    #     "\n")
+    csv.close()
+
+
+def scrape_events():
     year = 2019
     month = 9
-    csv.write("Subject,Start Date,Start Time,End Date,End Time,All Day Event,Description,Location,Private\n")
+    event_list = []
     while year != 2020 and month != 6:
         month_link = CALENDAR_LINK + "month/" + str(year) + "-" + str(month)
         driver.get(month_link)
@@ -141,11 +202,13 @@ def write_csv():
             EC.presence_of_all_elements_located((By.CSS_SELECTOR, "td.single-day div.contents"))
         )
         for index in range(len(events)):
+            sys.stdout.write("\r%i events added" % len(event_list))
+            sys.stdout.flush()
             link = events[index].find_element(By.CSS_SELECTOR, "a")
             link.click()
             url = driver.current_url
             subject = driver.find_element(By.CSS_SELECTOR, "h1#page-title").text
-            date = driver.find_element(By.CSS_SELECTOR, "span.date-display-single").text.split(" ")[1]
+            raw_date = driver.find_element(By.CSS_SELECTOR, "span.date-display-single").text.split(" ")[1]
 
             time = get_time()
 
@@ -154,18 +217,8 @@ def write_csv():
             location = get_address()
 
             description = get_description(contact_name, contact_email, url)
-            location = "\"" + location + "\""
-            subject = "\"" + subject + "\""
-            csv.write(subject + "," +
-                      date + "," +
-                      time.get("start_time") + "," +
-                      date + "," +
-                      time.get("end_time") + "," +
-                      time.get("all_day") + "," +
-                      description + "," +
-                      location + "," +
-                      "False" +
-                      "\n")
+            event = create_event(subject, time, raw_date, description, location)
+            event_list.append(event)
             driver.get(month_link)
             events = driver.find_elements(By.CSS_SELECTOR, "td.single-day div.contents")
         if month == 12:
@@ -174,8 +227,8 @@ def write_csv():
         else:
             month += 1
 
-    csv.close()
     driver.quit()
+    return event_list
 
 
 def google_calendar():
@@ -203,12 +256,10 @@ def google_calendar():
     return service
 
 
-def upload_events(calendar):
-    # Call the Calendar API
-    now = datetime.datetime.utcnow().isoformat() + 'Z'  # 'Z' indicates UTC time
+def upload_events(service, events):
     page_token = None
     next_page_exists = True
-    calendar_list = calendar.calendarList().list(pageToken=page_token).execute()
+    calendar_list = service.calendarList().list(pageToken=page_token).execute()
     calendar = None
     while not calendar and next_page_exists:
         for calendar_list_entry in calendar_list['items']:
@@ -219,10 +270,33 @@ def upload_events(calendar):
             if not page_token:
                 next_page_exists = False
 
+    if calendar:
+        service.calendars().delete(calendarId=calendar['id']).execute()
+
+    calendar_body = {
+        'summary': 'UTCS'
+    }
+    calendar = service.calendars().insert(body=calendar_body).execute()
+
+    for index, event in enumerate(events):
+        sys.stdout.write("\rUploaded %i Events" % index)
+        sys.stdout.flush()
+        try:
+            service.events().insert(calendarId=calendar['id'], body=event).execute()
+        except TypeError:
+            print(event)
+
 
 def main():
+    print('Getting authentication...')
     service = google_calendar()
-    upload_events(service)
+    print('Authenticated.')
+    print('Getting events...')
+    events = scrape_events()
+    print('\nGot events.')
+    print('Uploading events...')
+    upload_events(service, events)
+    print('\nUploaded events.')
 
 
 main()
