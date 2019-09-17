@@ -14,6 +14,13 @@ Calendar. Google Calendar API implementation in progress.
 - Click the button saying "Download Client Configuration"
 - Save the file `credentials.json` to utcs-calendar directory
 
+### Installing Chromedriver
+
+- Download `chromedriver` from <https://sites.google.com/a/chromium.org/chromedriver/downloads>
+    - Go to <chrome://about> on Google Chrome to check version
+- Move `chromedriver` executable to `/usr/local/bin/`
+
+
 ## Run
 `python3 utcs-calendar/utcs_calendar.py`
 
