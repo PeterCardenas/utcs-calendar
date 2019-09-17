@@ -1,3 +1,5 @@
 .idea/
-*.csv
-*.json
+events.csv
+credentials.json
+venv/
+token.pickle
