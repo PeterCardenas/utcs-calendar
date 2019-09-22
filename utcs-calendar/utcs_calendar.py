@@ -1,59 +1,28 @@
 from __future__ import print_function
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.chrome.options import Options
 import requests
 from bs4 import BeautifulSoup
 import datetime
 import pickle
 import os.path
 from googleapiclient.discovery import build
+from apiclient import http
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
-import re
 from datetime import date
 from datetime import datetime
-import pytz
 import sys
+import re
+from urllib.parse import urljoin
 
 SCOPES = ['https://www.googleapis.com/auth/calendar.readonly', 'https://www.googleapis.com/auth/calendar']
 
-CHROME_PATH = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-CHROMEDRIVER_PATH = '/usr/local/bin/chromedriver'
-WINDOW_SIZE = "1920,1080"
+UTCS_LINK = "https://apps.cs.utexas.edu"
 
-chrome_options = Options()
-chrome_options.add_argument("--headless")
-chrome_options.add_argument("--window-size=%s" % WINDOW_SIZE)
-chrome_options.binary_location = CHROME_PATH
-
-CALENDAR_LINK = "https://apps.cs.utexas.edu/calendar/events/"
-
-driver = webdriver.Chrome(
-    executable_path=CHROMEDRIVER_PATH,
-    options=chrome_options
-)
-
-
-def combine_description(description_parts):
-    description_text = map(lambda part: part.text, description_parts)
-    desc = "\n\n".join(description_text)
-    return desc
+CALENDAR_LINK = UTCS_LINK + "/calendar/events"
 
 
 def get_address():
-    location_elements = driver.find_elements(By.CSS_SELECTOR, "div.field-name-field-location div.field-items")
     location_name = ""
-    if len(location_elements) > 0:
-        location_name = location_elements[0].text
-    else:
-        room_elements = driver.find_elements(By.CSS_SELECTOR, "div.field-name-field-room div.field-items")
-        if len(room_elements) > 0:
-            location_name = room_elements[0].text
-        else:
-            location_name = "GDC"
 
     location = ""
     if "GDC" in location_name:
@@ -85,89 +54,25 @@ def get_address():
     return location
 
 
-def get_time():
-    start_time_elements = driver.find_elements(By.CSS_SELECTOR, "span.date-display-start")
-    start_time = ""
-    end_time_elements = driver.find_elements(By.CSS_SELECTOR, "span.date-display-end")
-    end_time = ""
-    all_day = "False"
-    if len(start_time_elements) > 0:
-        start_time = start_time_elements[0].text
-        start_time = start_time[:-2] + " " + start_time[-2:].upper()
-        if len(end_time_elements) > 0:
-            end_time = end_time_elements[0].text
-            end_time = end_time[:-2] + " " + end_time[-2:].upper()
-    else:
-        all_day = "True"
-
-    ret = {
-        'start_time': start_time,
-        'end_time': end_time,
-        'all_day': all_day
-    }
-    return ret
-
-
-def get_contact():
-    contact_name_elements = driver.find_elements(By.CSS_SELECTOR, "div.field-name-field-name div.field-items")
-    contact_name = ""
-    if len(contact_name_elements) > 0:
-        contact_name = contact_name_elements[0].text
-
-    contact_email_elements = driver.find_elements(By.CSS_SELECTOR, "div.field-name-field-email div.field-items")
-    contact_email = ""
-    if len(contact_email_elements) > 0:
-        contact_email = contact_email_elements[0].text
-
-    return contact_name, contact_email
-
-
-def get_description(contact_name, contact_email, url):
-    description_parts = driver.find_elements(By.CSS_SELECTOR, "div.field-type-text-with-summary p")
-    description = ""
-    if len(description_parts) > 0:
-        description = combine_description(description_parts)
-
-    description = "{0}{1}URL: {2}\n\n{3}".format(
-        "Contact Name: " + contact_name + "\n\n" if len(contact_name) > 0 else contact_name,
-        "Contact Email: " + contact_email + "\n\n" if len(contact_email) > 0 else contact_email,
-        url,
-        description
-    )
-
-    return description
-
-
-def create_event(summary, time, raw_date, description, location):
+def create_event(title, year, month, day, description, location, all_day, start_time_hour=0, start_time_minute=0,
+                 end_time_hour=0, end_time_minute=0):
     event = dict()
-    event['summary'] = summary
+    event['summary'] = title
     event['description'] = description
     event['location'] = location
-    date_components = raw_date.split("/")
-    date_year = int(date_components[2])
-    date_month = int(date_components[0])
-    date_day = int(date_components[1])
     event["start"] = dict()
     event["end"] = dict()
-    if time.get("all_day") == "True":
-        event["start"]["date"] = date(date_year, date_month, date_day).isoformat()
-        event["end"]["date"] = date(date_year, date_month, date_day).isoformat()
+
+    if all_day:
+        event["start"]["date"] = date(year, month, day).isoformat()
+        event["end"]["date"] = date(year, month, day).isoformat()
     else:
-        cst = pytz.timezone("America/Chicago")
-        start_time_components = re.split("[ :]", time.get('start_time'))
-        start_time_hour = int(start_time_components[0])
-        start_time_minute = int(start_time_components[1])
-        if start_time_components[2] == "PM" and start_time_hour != 12:
-            start_time_hour += 12
-        end_time_components = re.split("[ :]", time.get('end_time'))
-        end_time_hour = int(end_time_components[0])
-        end_time_minute = int(end_time_components[1])
-        if end_time_components[2] == "PM" and end_time_hour != 12:
-            end_time_hour += 12
-        event["start"]["dateTime"] = datetime(date_year, date_month, date_day,
-                                              start_time_hour, start_time_minute, 0, 0, cst).isoformat()
-        event["end"]["dateTime"] = datetime(date_year, date_month, date_day,
-                                            end_time_hour, end_time_minute, 0, 0, cst).isoformat()
+        event["start"]["dateTime"] = datetime(year, month, day,
+                                              start_time_hour, start_time_minute, 0, 0).isoformat()
+        event["start"]["timeZone"] = "America/Chicago"
+        event["end"]["dateTime"] = datetime(year, month, day,
+                                            end_time_hour, end_time_minute, 0, 0).isoformat()
+        event["end"]["timeZone"] = "America/Chicago"
 
     return event
 
@@ -195,39 +100,60 @@ def scrape_events():
     year = 2019
     month = 9
     event_list = []
-    while year != 2020 and month != 6:
-        month_link = CALENDAR_LINK + "month/" + str(year) + "-" + str(month)
-        driver.get(month_link)
-        events = WebDriverWait(driver, 10).until(
-            EC.presence_of_all_elements_located((By.CSS_SELECTOR, "td.single-day div.contents"))
-        )
-        for index in range(len(events)):
+    while year != 2020 or month != 6:
+        month_link = CALENDAR_LINK + "/month/" + str(year) + "-" + str(month)
+        month_html = requests.get(month_link).content
+        driver = BeautifulSoup(markup=month_html, features="html.parser")
+        day_elements = driver.select(selector="td.single-day")
+        for day_element in day_elements:
             sys.stdout.write("\r%i events added" % len(event_list))
             sys.stdout.flush()
-            link = events[index].find_element(By.CSS_SELECTOR, "a")
-            link.click()
-            url = driver.current_url
-            subject = driver.find_element(By.CSS_SELECTOR, "h1#page-title").text
-            raw_date = driver.find_element(By.CSS_SELECTOR, "span.date-display-single").text.split(" ")[1]
-
-            time = get_time()
-
-            contact_name, contact_email = get_contact()
-
-            location = get_address()
-
-            description = get_description(contact_name, contact_email, url)
-            event = create_event(subject, time, raw_date, description, location)
-            event_list.append(event)
-            driver.get(month_link)
-            events = driver.find_elements(By.CSS_SELECTOR, "td.single-day div.contents")
+            raw_date = day_element.get(key="data-date")
+            day = int(raw_date.split(sep="-")[2])
+            events = day_element.select(selector='div.item')
+            for event in events:
+                title_element = event.select(selector="div.views-field-title a")[0]
+                url = urljoin(UTCS_LINK, title_element.get(key="href"))
+                title = title_element.get_text()
+                location_element = event.select(selector="div.views-field-field-location-1")[0]
+                location = location_element.get_text()
+                if location == "":
+                    room_element = event.select(selector="div.views-field-field-room-1")[0]
+                    location = room_element.get_text()
+                description = "URL: " + url
+                all_day = True
+                time_elements = event.select(selector="div.date-display-range")
+                if len(time_elements) > 0:
+                    all_day = False
+                    time_element = time_elements[0]
+                    start_time_element = time_element.select(selector="span.date-display-start")[0]
+                    start_time = start_time_element.get_text()
+                    start_time_components = re.split(pattern="[ :]", string=start_time)
+                    start_time_hour = int(start_time_components[0])
+                    start_time_minute = int(start_time_components[1])
+                    if start_time_components[2] == "pm" and start_time_hour != 12:
+                        start_time_hour += 12
+                    end_time_element = time_element.select(selector="span.date-display-end")[0]
+                    end_time = end_time_element.get_text()
+                    end_time_components = re.split(pattern="[ :]", string=end_time)
+                    end_time_hour = int(end_time_components[0])
+                    end_time_minute = int(end_time_components[1])
+                    if end_time_components[2] == "pm" and end_time_hour != 12:
+                        end_time_hour += 12
+                    event = create_event(title=title, year=year, month=month, day=day, start_time_hour=start_time_hour,
+                                         start_time_minute=start_time_minute, end_time_hour=end_time_hour,
+                                         end_time_minute=end_time_minute, description=description, location=location,
+                                         all_day=all_day)
+                else:
+                    event = create_event(title=title, year=year, month=month, day=day,
+                                         description=description, location=location, all_day=all_day)
+                event_list.append(event)
         if month == 12:
             month = 1
             year += 1
         else:
             month += 1
 
-    driver.quit()
     return event_list
 
 
@@ -277,14 +203,16 @@ def upload_events(service, events):
         'summary': 'UTCS'
     }
     calendar = service.calendars().insert(body=calendar_body).execute()
+    batch = service.new_batch_http_request()
 
     for index, event in enumerate(events):
         sys.stdout.write("\rUploaded %i Events" % index)
         sys.stdout.flush()
         try:
-            service.events().insert(calendarId=calendar['id'], body=event).execute()
+            batch.add(service.events().insert(calendarId=calendar['id'], body=event))
         except TypeError:
             print(event)
+    batch.execute()
 
 
 def main():

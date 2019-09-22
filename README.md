@@ -1,6 +1,5 @@
-# UTCS Calendar Converter
-This application converts the UTCS Events Calendar to CSV file. This CSV file can then be imported into your Google
-Calendar. Google Calendar API implementation in progress.
+# UTCS Calendar Importer
+This application imports the UTCS calendar into your Google Calendar.
 
 ## Install Libraries
 `source <virtualenv name>/bin/activate`  
@@ -13,13 +12,6 @@ Calendar. Google Calendar API implementation in progress.
 - Enable Google Calendar API
 - Click the button saying "Download Client Configuration"
 - Save the file `credentials.json` to utcs-calendar directory
-
-### Installing Chromedriver
-
-- Download `chromedriver` from <https://sites.google.com/a/chromium.org/chromedriver/downloads>
-    - Go to <chrome://about> on Google Chrome to check version
-- Move `chromedriver` executable to `/usr/local/bin/`
-
 
 ## Run
 
