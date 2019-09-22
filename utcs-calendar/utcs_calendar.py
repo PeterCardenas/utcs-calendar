@@ -5,7 +5,6 @@ import datetime
 import pickle
 import os.path
 from googleapiclient.discovery import build
-from apiclient import http
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from datetime import date
