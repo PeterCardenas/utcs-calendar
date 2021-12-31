@@ -76,25 +76,6 @@ def create_event(title, year, month, day, description, location, all_day, start_
     return event
 
 
-def write_csv():
-    csv = open("events.csv", "w+")
-    csv.write("Subject,Start Date,Start Time,End Date,End Time,All Day Event,Description,Location,Private\n")
-    # description = "\"" + description + "\""
-    # location = "\"" + location + "\""
-    # subject = "\"" + subject + "\""
-    # csv.write(subject + "," +
-    #     raw_date + "," +
-    #     time.get("start_time") + "," +
-    #     raw_date + "," +
-    #     time.get("end_time") + "," +
-    #     time.get("all_day") + "," +
-    #     description + "," +
-    #     location + "," +
-    #     "False" +
-    #     "\n")
-    csv.close()
-
-
 def scrape_events():
     year = 2019
     month = 9
